@@ -4,7 +4,11 @@ import yaml
 
 from layer0_ingest import Layer0Pipeline, MockFeed, RegimeMockFeed, default_regimes
 from layer1_gauge import compute_gauge_state
-from layer2_topology import UMAPProjector, RegimeClusterer, AnomalyDetector, RegimeLabeler
+from layer2_topology import (
+    RegimeLabeler,
+    build_initial_snapshot,
+    AttractorMap,
+)
 from layer4_decision import decide, ValueModel
 from layer4_decision.value_model import compute_forward_returns
 from validation import (
@@ -70,7 +74,6 @@ def run_pipeline(config: dict, n_calibration: int, n_live: int, momentum_window:
     vectors = np.stack([gs.to_vector() for gs in gauge_states])
     mid_prices = np.array(mid_prices)
 
-
     calibration_vectors = vectors[:n_calibration]
     live_vectors = vectors[n_calibration:]
     calibration_gauge_states = gauge_states[:n_calibration]
@@ -78,27 +81,61 @@ def run_pipeline(config: dict, n_calibration: int, n_live: int, momentum_window:
     calibration_mid_prices = mid_prices[:n_calibration]
     live_mid_prices = mid_prices[n_calibration:]
 
-    projector = UMAPProjector(n_components=5)
-    calibration_embedding = projector.fit(calibration_vectors)
-
-    clusterer = RegimeClusterer(min_cluster_size=15)
-    calibration_labels = clusterer.fit(calibration_embedding)
+    initial_snapshot = build_initial_snapshot(
+        calibration_vectors,
+        n_components=5,
+        min_cluster_size=15,
+        anomaly_percentile=99.0,
+    )
+    attractor_map = AttractorMap(initial_snapshot)
 
     labeler = RegimeLabeler()
-    labeler.fit(calibration_gauge_states, calibration_labels)
+    labeler.fit(calibration_gauge_states, initial_snapshot.clusterer._clusterer.labels_)
 
-    detector = AnomalyDetector(anomaly_percentile=99.0)
-    epsilon = detector.fit(calibration_embedding)
-
-    calibration_self_distances, _ = detector._nn.kneighbors(calibration_embedding, n_neighbors=2)
+    calibration_embedding = initial_snapshot.projector._model.embedding_
+    calibration_self_distances, _ = initial_snapshot.detector._nn.kneighbors(calibration_embedding, n_neighbors=2)
     calibration_self_distances = calibration_self_distances[:, 1]
 
-    live_embedding = projector.transform(live_vectors)
-    live_distances, _ = detector._nn.kneighbors(live_embedding, n_neighbors=1)
-    live_distances = live_distances[:, 0]
+    live_distances = []
+    regime_states = []
+    decisions = []
+    refit_triggers = 0
+    snapshot_versions_seen = set()
 
-    live_labels = clusterer.predict(live_embedding)
-    regime_states = detector.evaluate(live_embedding, live_labels)
+    rolling_window = list(calibration_vectors)
+    max_window_size = n_calibration
+
+    for i, vec in enumerate(live_vectors):
+        snapshot = attractor_map.current()
+        snapshot_versions_seen.add(snapshot.version)
+
+        embedding = snapshot.projector.transform(vec[None, :])
+        distance, _ = snapshot.detector._nn.kneighbors(embedding, n_neighbors=1)
+        distance = float(distance[0, 0])
+        live_distances.append(distance)
+
+        label = snapshot.clusterer.predict(embedding)
+        rs = snapshot.detector.evaluate(embedding, label)[0]
+        regime_states.append(rs)
+
+        semantic = labeler.resolve(rs.topology_id)
+        decision = decide(semantic, rs.anomaly_triggered)
+        decisions.append(decision)
+
+        rolling_window.append(vec)
+        if len(rolling_window) > max_window_size:
+            rolling_window.pop(0)
+
+        if rs.anomaly_triggered:
+            thread = attractor_map.trigger_async_refit(
+                np.stack(rolling_window),
+                min_cluster_size=15,
+                anomaly_percentile=99.0,
+            )
+            if thread is not None:
+                refit_triggers += 1
+
+    live_distances = np.array(live_distances)
 
     value_model = ValueModel(target_horizon_ticks=2)
     value_model.train(calibration_vectors, calibration_mid_prices)
@@ -106,26 +143,28 @@ def run_pipeline(config: dict, n_calibration: int, n_live: int, momentum_window:
     live_actual_returns = compute_forward_returns(live_mid_prices, value_model.target_horizon_ticks)
     value_check = check_value_model_predictions(live_value_predictions, live_actual_returns)
 
-    decisions = []
-    for rs in regime_states:
-        semantic = labeler.resolve(rs.topology_id)
-        decisions.append(decide(semantic, rs.anomaly_triggered))
-
-    degeneracy = check_cluster_degeneracy(calibration_labels)
-    leakage = check_calibration_leakage(epsilon, calibration_self_distances, live_distances)
+    degeneracy = check_cluster_degeneracy(initial_snapshot.clusterer._clusterer.labels_)
+    leakage = check_calibration_leakage(
+        initial_snapshot.detector.epsilon_regime,
+        calibration_self_distances,
+        live_distances,
+    )
     backtest = summarize_decisions(decisions)
 
     return {
         "degeneracy": degeneracy,
         "leakage": leakage,
         "backtest": backtest,
-        "epsilon_regime": epsilon,
+        "epsilon_regime": initial_snapshot.detector.epsilon_regime,
         "n_calibration": n_calibration,
         "n_live": n_live,
         "mid_prices": mid_prices,
         "vectors": vectors,
         "live_value_predictions": live_value_predictions,
         "value_check": value_check,
+        "refit_triggers": refit_triggers,
+        "final_snapshot_version": attractor_map.current().version,
+        "snapshot_versions_seen_during_live": sorted(snapshot_versions_seen),
     }
 
 
@@ -144,6 +183,9 @@ def main():
     print(results["leakage"])
     print(results["backtest"])
     print(results["value_check"])
+    print("refit_triggers:", results["refit_triggers"])
+    print("final_snapshot_version:", results["final_snapshot_version"])
+    print("snapshot_versions_seen_during_live:", results["snapshot_versions_seen_during_live"])
 
     if args.report:
         from reporting import build_report, plot_decision_distribution
