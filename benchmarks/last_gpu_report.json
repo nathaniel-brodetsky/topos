@@ -11,12 +11,17 @@
     "hypothesis: CAGRA's graph-based index construction is overkill at this data scale; tested cuVS brute_force as a direct alternative",
     "measured result: brute_force search is 11.24x faster than CAGRA at 300-point scale (0.11ms vs 1.24ms mean per single-vector query)",
     "after switching AnomalyDetectorGPU to brute_force, tick-by-tick mean latency dropped to 2.38ms, matching CPU baseline",
-    "remaining bottleneck after the fix is umap_transform alone at ~73% of total latency; this has no drop-in faster alternative within cuML for this use case"
+    "remaining bottleneck after the fix is umap_transform alone at ~73% of total latency; this has no drop-in faster alternative within cuML for this use case",
+    "attempted CUDA Graph capture on Layer 1 (commutator computation) to eliminate Python kernel-launch overhead; capture failed with NotImplementedError: calling cuBLAS API during stream capture is currently unsupported, on CuPy 14.2.0",
+    "measured eager-mode Layer 1 latency (commutator alone, no cuML) at ~0.048ms (48 microseconds) per tick, which is negligible against the ~1.74ms UMAP.transform cost; graph capture was not pursued further, since it would optimize a component responsible for roughly 2% of total tick latency rather than the actual bottleneck",
+    "verified XGBoost DMatrix accepts a cupy.ndarray directly with no explicit host-side copy triggered by application code, confirming zero-copy GPU-to-XGBoost input on this stack; XGBoost's predict() output was returned as a numpy.ndarray, meaning the library itself copies predictions back to host after GPU inference"
   ],
   "known_limitations": [
     "the brute_force vs CAGRA finding is specific to this calibration window size (300 points); CAGRA is expected to outperform brute_force as the historical attractor map grows to thousands or millions of points via Section 4.4 refits, and this tradeoff should be re-evaluated at production scale, not assumed fixed",
     "this uses Python cuML/cuVS wrappers, not the C++/CUDA execution plane specified in the architecture; the spec explicitly requires no Python/interpreter in the hot path for production tick-to-trade latency, which this reference implementation does not provide",
     "the <1us tick-to-trade target from the specification requires a native C++/CUDA execution plane and DPU-level batching/pipelining not implemented here; even the improved 2.38ms figure is roughly 2400x above that target",
-    "GPU tick-by-tick and CPU tick-by-tick are now within noise of each other at this data scale; the earlier apparent GPU advantage only appears in batched processing (~28x faster), not single-tick latency"
+    "GPU tick-by-tick and CPU tick-by-tick are now within noise of each other at this data scale; the earlier apparent GPU advantage only appears in batched processing (~28x faster), not single-tick latency",
+    "CUDA Graph capture is not usable for any pipeline stage that calls cuBLAS (including our own Layer 1 matmul-based commutator) on this CuPy version; a native C++/CUDA execution plane would need to either avoid this cuBLAS limitation directly or use a CUDA/cuBLAS version combination where graph-capturable GEMM is supported",
+    "the XGBoost inference output currently lands on host memory (numpy array) after GPU-side computation; this is noted as architecturally acceptable for the current PoC, since order-message formatting for the broker is a host-side (CPU) responsibility prior to any DOCA/DPU execution plane, but it means the current pipeline is not a fully zero-copy path end to end"
   ]
 }
