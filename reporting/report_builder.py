@@ -36,10 +36,11 @@ def build_report(results: dict, output_path: str = "reporting/last_run_report.js
             "correlation_with_actual": value_check.correlation_with_actual,
             "is_degenerate": value_check.is_degenerate,
         },
-        "known_limitations": [
-            "mock feed is a pure random walk with no persistent structure; live_anomaly_rate drift above calibration target is expected on this data, not a detector defect",
+                "known_limitations": [
+            "mock feed now includes persistent regimes (EQUILIBRIUM/IMPULSE_UP/IMPULSE_DOWN/TOXIC_VORTEX) with real drift, replacing the earlier pure random walk",
+            "value model predictive power depends heavily on the added price_momentum feature; commutator/curl-derived features alone gave near-zero correlation (~0.08) with forward returns in earlier testing",
             "cluster-to-regime semantic labeling (IMPULSE/EQUILIBRIUM) is threshold-based on directed_pressure percentiles, not derived from the specification",
-            "value model correlation with actual forward returns is expected to be near zero on this mock data, since a random walk has no predictable structure by construction",
+            "target_horizon_ticks=2 was chosen empirically via a horizon sweep on this specific mock feed's regime-transition speed; it is not a universal constant and must be re-derived for any other data source",
             "all timings, if present in this run, are CPU reference measurements and are not representative of target DPU/GPU hardware",
         ],
     }
