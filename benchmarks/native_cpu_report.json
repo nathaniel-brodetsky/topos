@@ -1,0 +1,32 @@
+{
+  "component": "commutator_layer1",
+  "measurements": [
+    {
+      "implementation": "python_cupy_eager_gpu",
+      "mean_us": 48.45,
+      "note": "measured earlier on L40S as part of CUDA Graph capture investigation"
+    },
+    {
+      "implementation": "cpp_avx512_march_native",
+      "mean_us": 2.0148,
+      "p50_us": 1.7040,
+      "p99_us": 5.1030,
+      "cpu_arch_detected": "sapphirerapids"
+    },
+    {
+      "implementation": "cpp_avx2_only",
+      "mean_us": 1.8621,
+      "p50_us": 1.6690,
+      "p99_us": 4.9520
+    }
+  ],
+  "findings": [
+    "C++/AVX2 implementation of the commutator is approximately 24-26x faster than the Python/CuPy GPU eager-mode implementation, confirming the specification's premise that removing the interpreter from the hot path yields a real, measured improvement, not just a theoretical one",
+    "AVX-512 (available on this Sapphire Rapids CPU via -march=native) gave no measurable benefit over AVX2-only on a 20x20 matrix; the operation is too small to benefit from wider SIMD registers, and the bottleneck at this scale is loop overhead and memory access pattern, not vector width",
+    "p99 latency (4.95-5.10us) is roughly 3x the mean, most likely due to OS scheduler jitter on a non-real-time, non-pinned kernel; CPU affinity pinning and a real-time-patched kernel would be required before p99 figures here can be treated as representative of a production tick-to-trade tail latency"
+  ],
+  "not_yet_done": [
+    "custom CUDA kernel for the same commutator has not yet been written or measured; this comparison (C++/AVX2 vs custom CUDA kernel) requires a GPU instance and is the next step before deciding which backend the execution plane uses for this component at batch_size=1",
+    "no CPU pinning or real-time kernel tuning applied; current p99 figures are not representative of a tuned production deployment"
+  ]
+}
