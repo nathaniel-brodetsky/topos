@@ -18,6 +18,8 @@
 #include "orderbook_state.hpp"
 #include "kmeans_calibration.hpp"
 #include "regime_labeling.hpp"
+#include <dlfcn.h>
+#include <chrono>
 
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
@@ -58,6 +60,30 @@ std::vector<std::array<float, CALIB_DIM>> centroids;
 std::vector<float> epsilon_vec;
 std::vector<SemanticRegime> centroid_regime;
 std::atomic<bool> calibration_done{false};
+
+union Entry {
+    int missing;
+    float fvalue;
+    int qvalue;
+};
+typedef void (*predict_fn_t)(Entry*, int, float*);
+predict_fn_t g_value_predict_fn = nullptr;
+void* g_value_model_handle = nullptr;
+
+bool load_value_model() {
+    g_value_model_handle = dlopen("/tmp/live_value_model.so", RTLD_NOW);
+    if (!g_value_model_handle) {
+        fprintf(stderr, "[hot-path] WARNING: failed to load value model: %s\n", dlerror());
+        return false;
+    }
+    g_value_predict_fn = (predict_fn_t)dlsym(g_value_model_handle, "predict");
+    if (!g_value_predict_fn) {
+        fprintf(stderr, "[hot-path] WARNING: failed to find predict symbol: %s\n", dlerror());
+        return false;
+    }
+    printf("[hot-path] value model loaded via tl2cgen dlopen/dlsym\n");
+    return true;
+}
 
 inline void build_adjacency_matrix_avx(const float* dV, const float* P) {
     for (int i = 0; i < N; ++i) {
@@ -225,6 +251,8 @@ void hot_path_thread_fn() {
     bool first_tick = true;
     BookUpdate update;
 
+    bool value_model_available = load_value_model();
+
     printf("[hot-path] entering CALIBRATION phase, collecting %d samples from live data...\n", CALIBRATION_SAMPLES);
 
     while (!shutdown_flag.load(std::memory_order_relaxed) && (int)calibration_data.size() < CALIBRATION_SAMPLES) {
@@ -280,14 +308,33 @@ void hot_path_thread_fn() {
             bool anomaly = best_dist > epsilon_vec[best_idx];
             Decision decision = decide(centroid_regime[best_idx], anomaly);
 
+            float predicted_value = 0.0f;
+            double value_model_us = 0.0;
+            if (value_model_available) {
+                Entry entry_data[5];
+                entry_data[0].fvalue = commutator_norm;
+                entry_data[1].fvalue = query[1];
+                entry_data[2].fvalue = query[2];
+                entry_data[3].fvalue = query[3];
+                entry_data[4].fvalue = query[4];
+                float result[1];
+
+                auto t0 = std::chrono::high_resolution_clock::now();
+                g_value_predict_fn(entry_data, 0, result);
+                auto t1 = std::chrono::high_resolution_clock::now();
+
+                predicted_value = result[0];
+                value_model_us = std::chrono::duration<double, std::micro>(t1 - t0).count();
+            }
+
             uint64_t count = messages_processed.fetch_add(1, std::memory_order_relaxed) + 1;
 
-            printf("[tick %lu] mid=%.2f spread=%.2f commutator=%.4f dist=%.4f eps=%.4f decision=%s\n",
+            printf("[tick %lu] mid=%.2f spread=%.2f commutator=%.4f dist=%.4f eps=%.4f decision=%s value_pred=%.4f (model_us=%.4f)\n",
                    count,
                    (update.P[0] + update.P[10]) / 2.0f,
                    update.P[10] - update.P[0],
                    commutator_norm, best_dist, epsilon_vec[best_idx],
-                   decision_names[(int)decision]);
+                   decision_names[(int)decision], predicted_value, value_model_us);
         }
     }
 }
