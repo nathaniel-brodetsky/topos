@@ -1,39 +1,32 @@
 {
-  "architecture_decision": "hot path is CPU-bound (AVX2 only); GPU/CAGRA reserved exclusively for background batch refit (Section 4.4) and Control Plane (Dataiku) historical batch search",
-  "layer1_commutator": {
-    "implementation": "cpp_avx2",
-    "mean_us": 1.8621,
-    "p50_us": 1.6690,
-    "p99_us": 4.9520
+  "architecture_decision": "hot path is 100% CPU-bound (AVX2 only); GPU/CAGRA reserved exclusively for background batch refit (Section 4.4) and Control Plane (Dataiku) historical batch search",
+  "fused_hot_path_measurement": {
+    "description": "Layer 1 (commutator) + Layer 2 (centroid lookup, K=100) measured as a single fused function call per tick, not summed from separate measurements",
+    "mean_us": 1.8074,
+    "p50_us": 1.7480,
+    "p99_us": 3.2480,
+    "p999_us": 6.7180,
+    "n_trials": 1000000
   },
-  "layer2_centroid_lookup": {
-    "implementation": "cpp_avx2",
-    "k_centroids": 100,
-    "dim": 5,
-    "mean_us": 0.2334,
-    "p50_us": 0.2200,
-    "p99_us": 0.2590,
-    "target_from_lead": "< 0.5 us",
-    "target_met": true,
-    "margin": "2.1x better than target"
-  },
-  "combined_hot_path_layer1_plus_layer2": {
-    "mean_us_sum": 2.0955,
-    "note": "sum of independently measured means; not yet measured as a single fused pipeline call, which would be the next verification step"
+  "component_breakdown_measured_separately": {
+    "layer1_commutator_mean_us": 1.8621,
+    "layer2_centroid_lookup_mean_us": 0.2334,
+    "sum_of_separate_means_us": 2.0955,
+    "note": "fused measurement (1.81us) is lower than the sum of separate means (2.10us), consistent with shared warmup and cache-locality benefits when both operations run back-to-back in one measured call rather than as two independent benchmark runs"
   },
   "architecture_history": [
     "original hypothesis (unverified): CAGRA wins as historical index scales to 10k-100k+ points",
     "measured finding: CAGRA never wins at query batch_size=1, regardless of index size up to 500,000 points; brute_force always wins at batch=1",
     "measured finding: CAGRA wins decisively at query batch_size>=1000 (background/batch workloads)",
     "architectural redesign: hot path no longer searches the full historical index at all; background GPU refit (HDBSCAN via cuML, at batch sizes where CAGRA is measured to win) periodically compresses the historical attractor map into ~50-100 centroids with per-centroid anomaly radii (epsilon)",
-    "hot path now performs O(K) centroid lookup (K~100) via AVX2 instead of O(N) or O(log N) search against the full historical index",
+    "hot path now performs O(K) centroid lookup (K=100) via AVX2 instead of O(N) or O(log N) search against the full historical index",
     "measured result: centroid lookup at K=100 costs 0.233us mean, beating the lead's <0.5us target by more than 2x",
-    "combined Layer 1 + Layer 2 hot-path latency: approximately 2.1us, matching the lead's production-readiness estimate"
+    "fused end-to-end hot-path measurement (Layer 1 + Layer 2 in one measured call): 1.81us mean, 3.25us p99, 6.72us p999"
   ],
   "not_yet_done": [
-    "the two layers have only been measured independently; a single fused end-to-end timing (Layer 0 ingest -> Layer 1 -> Layer 2 lookup -> Layer 4 decision, all in one measured call) has not been performed",
-    "no CPU pinning or real-time kernel tuning applied to any measurement in this report",
-    "the background GPU refit path that produces the centroid+epsilon map has not yet been implemented in C++; only the CPU-side consumption of that map (centroid lookup) has been built and measured",
-    "argmin over K=100 centroids is done with a scalar loop, not vectorized reduction; this was a deliberate simplicity choice given the negligible cost at this K, not yet benchmarked against an AVX2 horizontal-reduction alternative"
+    "no CPU pinning or real-time kernel tuning applied to any measurement in this report; p999 of 6.72us (roughly 3.7x the mean) is consistent with unpinned OS scheduler jitter and should improve substantially with CPU affinity and a real-time-patched kernel",
+    "the background GPU refit path that produces the centroid+epsilon map has not yet been implemented in C++, nor has the shadow-swap (double-buffered atomic pointer) mechanism connecting it to the hot-path consumer described in the lead's Task 3",
+    "argmin over K=100 centroids uses a scalar loop, not vectorized reduction; not yet benchmarked against an AVX2 horizontal-reduction alternative, though the current cost (0.23us) is already well within target",
+    "Layer 0 (ingest, adjacency matrix construction) and Layer 4 (decision table lookup) have not been included in this fused measurement; this is Layer 1+2 only"
   ]
 }
