@@ -1,0 +1,38 @@
+{
+  "investigation": "Treelite/TL2cgen compiled XGBoost inference \u2014 lead's Task 3 requirement for nanosecond-scale inference",
+  "api_history": [
+    "treelite.Model.load() and Model.compile()/export_lib() (codegen-to-C++ path from Treelite 2.x-3.x) are REMOVED in Treelite 4.7.0",
+    "Treelite 4.x replaced this with GTIL (General Tree Inference Library), an interpreted reference runtime explicitly documented as prioritizing code legibility over performance",
+    "the codegen-to-C compiler functionality moved to a separate package: tl2cgen (found pre-installed as a RAPIDS dependency, version 1.0.0)",
+    "tl2cgen.export_lib() successfully compiles an XGBoost model into a C source file and a shared library (.so) exposing a plain C-linkage predict() function"
+  ],
+  "measurements": [
+    {
+      "implementation": "xgboost_native_predict_python",
+      "mean_us": 49.11,
+      "p99_us": 142.67
+    },
+    {
+      "implementation": "treelite_gtil_python",
+      "mean_us": 40.34,
+      "p99_us": 95.82
+    },
+    {
+      "implementation": "tl2cgen_compiled_via_python_wrapper",
+      "mean_us": 12.63,
+      "p99_us": 32.03
+    },
+    {
+      "implementation": "tl2cgen_compiled_direct_cpp_dlopen",
+      "mean_us": 0.227,
+      "p50_us": 0.222,
+      "p99_us": 0.248,
+      "p999_us": "0.36-2.34 (noisy, unpinned)",
+      "note": "average of 4 runs; p999 varies run to run due to OS scheduler jitter, consistent with the pattern observed throughout this project on an unpinned process"
+    }
+  ],
+  "conclusion": "the lead's original plan (compile XGBoost tree into C code, call directly from C++, achieve nanosecond-scale inference) IS achievable, but not through the 'treelite' package directly in its current 4.x form \u2014 it requires the separate 'tl2cgen' package. Once compiled and called directly via dlopen/dlsym (bypassing Python entirely), inference cost drops to approximately 227ns mean, which is now the same order of magnitude as the rest of the AVX2 hot path (Layer 1+2 measured at 1.75-1.80us), rather than being a 12-49us bottleneck that would have dominated the entire pipeline",
+  "caveat": "227ns is measured for a small model (max_depth=4, 50 boosting rounds, 11 features) on synthetic data; actual production models may be larger/deeper and should be re-measured, not assumed to retain this exact figure",
+  "version_mismatch_warning": "tl2cgen's bundled treelite runtime (4.1.2) does not match the treelite package version used to save the model (4.7.0); compilation succeeded with a warning, not an error, but this version skew should be resolved (pin matching versions) before relying on this path for production, since serialization format changes between versions are not guaranteed to remain silently compatible",
+  "not_yet_done": "the compiled tree predict() has not yet been integrated into the fused hot_path_full_bridged benchmark alongside Layer 1+2+4; this would give the first complete Layer0+1+2+4+ValueModel single measured tick latency"
+}
