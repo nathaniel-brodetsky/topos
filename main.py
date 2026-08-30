@@ -105,8 +105,9 @@ def main():
     print(results["backtest"])
 
     if args.report:
-        from reporting import build_report
-        build_report(results)
+        from reporting import build_report, plot_decision_distribution
+        report = build_report(results)
+        plot_decision_distribution(report["decision_backtest"]["decision_counts"])
 
 
 if __name__ == "__main__":
