@@ -1,0 +1,19 @@
+{
+  "investigation": "leave-one-out ablation of 4 proposed features (OFI, Commutator Snap, Pressure Divergence, Queue Depletion) at horizon h=2",
+  "baseline_all_four_ic": 0.0759,
+  "leave_one_out": [
+    {"dropped": "ofi", "remaining_ic": 0.0607, "delta": 0.0152, "interpretation": "small positive delta, ofi contributes a little"},
+    {"dropped": "commutator_snap", "remaining_ic": 0.0526, "delta": 0.0233, "interpretation": "removing it improves the ensemble, meaning it was net-negative or noisy inside the combination"},
+    {"dropped": "pressure_divergence", "remaining_ic": 0.0598, "delta": 0.0161, "interpretation": "small positive delta, contributes a little"},
+    {"dropped": "depletion", "remaining_ic": -0.0090, "delta": 0.0849, "interpretation": "catastrophic drop below zero; depletion is carrying essentially all of the real signal"}
+  ],
+  "single_signal_alone": [
+    {"signal": "ofi", "pearson_ic": 0.0065, "verdict": "essentially noise on its own"},
+    {"signal": "commutator_snap", "pearson_ic": -0.0532, "verdict": "negative on its own; worse than random on out-of-sample"},
+    {"signal": "pressure_divergence", "pearson_ic": -0.0307, "verdict": "negative on its own; worse than random on out-of-sample"},
+    {"signal": "depletion", "pearson_ic": 0.0772, "verdict": "carries essentially the entire ensemble's predictive power alone"}
+  ],
+  "conclusion": "of the 4 proposed features, only Queue Depletion Rate (Signal 4) shows real, non-circular predictive value on this mock feed at h=2. OFI (Signal 1) is negligible. Commutator Snap (Signal 2) and Pressure Divergence (Signal 3) are actively harmful in isolation on out-of-sample data, likely because the mock feed's regime generator drives price via explicit drift/vol parameters rather than order-flow mechanics these signals were designed to detect, so there is no real structure for them to find here",
+  "caveat": "this is a verdict on the CURRENT MOCK FEED, not necessarily on the underlying trading ideas; commutator_snap and pressure_divergence may behave differently on real L3 data where the microstructure mechanics they were designed around actually occur. Do not discard the underlying hypotheses, only the current synthetic-data verdict.",
+  "recommendation": "before further feature engineering on mock data, prioritize acquiring real L3 order-book data (Databento/CME PCAP), since 3 of 4 signals could not be meaningfully evaluated on this synthetic feed's simplified microstructure"
+}
