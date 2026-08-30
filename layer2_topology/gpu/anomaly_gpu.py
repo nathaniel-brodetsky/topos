@@ -1,6 +1,6 @@
 import numpy as np
 import cupy as cp
-from cuvs.neighbors import cagra
+from cuvs.neighbors import brute_force
 
 from ..anomaly import RegimeState, TOXIC_VORTEX
 
@@ -13,11 +13,9 @@ class AnomalyDetectorGPU:
 
     def fit(self, calibration_embedding):
         calibration_embedding_gpu = cp.asarray(calibration_embedding, dtype=cp.float32)
-        build_params = cagra.IndexParams()
-        self._index = cagra.build(build_params, calibration_embedding_gpu)
+        self._index = brute_force.build(calibration_embedding_gpu)
 
-        search_params = cagra.SearchParams()
-        distances, _ = cagra.search(search_params, self._index, calibration_embedding_gpu, k=2)
+        distances, _ = brute_force.search(self._index, calibration_embedding_gpu, k=2)
         distances_cp = cp.asarray(distances)
         self_distances = cp.asnumpy(distances_cp)[:, 1]
 
@@ -29,8 +27,7 @@ class AnomalyDetectorGPU:
             raise RuntimeError("AnomalyDetectorGPU not fitted")
 
         embedding_gpu = cp.asarray(embedding, dtype=cp.float32)
-        search_params = cagra.SearchParams()
-        distances, _ = cagra.search(search_params, self._index, embedding_gpu, k=1)
+        distances, _ = brute_force.search(self._index, embedding_gpu, k=1)
         distances_cp = cp.asarray(distances)
         distances_host = cp.asnumpy(distances_cp)[:, 0]
 

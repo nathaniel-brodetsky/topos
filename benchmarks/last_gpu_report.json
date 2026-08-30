@@ -1,15 +1,22 @@
 {
   "backend": "cupy_tick_by_tick",
   "n_ticks": 200,
-  "p50_ms": 3.494960069656372,
-  "p99_ms": 6.015407233238219,
-  "mean_ms": 3.5937840020656586,
-  "ticks_per_sec": 278.2582368403926,
+  "p50_ms": 2.277552008628845,
+  "p99_ms": 3.866365339756009,
+  "mean_ms": 2.3819918358325958,
+  "ticks_per_sec": 419.8167201737962,
+  "history": [
+    "initial implementation used cuVS CAGRA for anomaly-distance ANN search, tuned for million-point indexes; on a 300-point calibration window this gave tick-by-tick mean latency of 3.59ms, SLOWER than CPU baseline (2.26ms)",
+    "per-stage profiling isolated the cost: umap_transform ~48%, cagra_search_evaluate ~41%, hdbscan_predict ~11%",
+    "hypothesis: CAGRA's graph-based index construction is overkill at this data scale; tested cuVS brute_force as a direct alternative",
+    "measured result: brute_force search is 11.24x faster than CAGRA at 300-point scale (0.11ms vs 1.24ms mean per single-vector query)",
+    "after switching AnomalyDetectorGPU to brute_force, tick-by-tick mean latency dropped to 2.38ms, matching CPU baseline",
+    "remaining bottleneck after the fix is umap_transform alone at ~73% of total latency; this has no drop-in faster alternative within cuML for this use case"
+  ],
   "known_limitations": [
-    "single-vector (batch size 1) tick-by-tick GPU latency is measured here, deliberately matching the CPU benchmark's per-tick methodology",
-    "GPU tick-by-tick (mean ~3.5ms) is SLOWER than CPU tick-by-tick (mean ~2.26ms) on this hardware and workload size, due to CUDA kernel launch and host-device sync overhead not being amortized at batch size 1",
-    "batched GPU processing (200 vectors in a single call) measured ~0.08ms/tick, ~28x faster than CPU — batching amortizes launch overhead but changes the processing model from tick-by-tick to windowed",
+    "the brute_force vs CAGRA finding is specific to this calibration window size (300 points); CAGRA is expected to outperform brute_force as the historical attractor map grows to thousands or millions of points via Section 4.4 refits, and this tradeoff should be re-evaluated at production scale, not assumed fixed",
     "this uses Python cuML/cuVS wrappers, not the C++/CUDA execution plane specified in the architecture; the spec explicitly requires no Python/interpreter in the hot path for production tick-to-trade latency, which this reference implementation does not provide",
-    "the <1us tick-to-trade target from the specification requires a native C++/CUDA execution plane and DPU-level batching/pipelining not implemented here"
+    "the <1us tick-to-trade target from the specification requires a native C++/CUDA execution plane and DPU-level batching/pipelining not implemented here; even the improved 2.38ms figure is roughly 2400x above that target",
+    "GPU tick-by-tick and CPU tick-by-tick are now within noise of each other at this data scale; the earlier apparent GPU advantage only appears in batched processing (~28x faster), not single-tick latency"
   ]
 }
