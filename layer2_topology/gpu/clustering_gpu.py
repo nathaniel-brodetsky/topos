@@ -1,5 +1,6 @@
 import cupy as cp
 from cuml.cluster import HDBSCAN
+from cuml.cluster.hdbscan import approximate_predict
 
 
 class RegimeClustererGPU:
@@ -18,5 +19,5 @@ class RegimeClustererGPU:
     def predict(self, embedding):
         if self._clusterer is None:
             raise RuntimeError("RegimeClustererGPU not fitted")
-        labels, _ = self._clusterer.approximate_predict(embedding)
+        labels, _ = approximate_predict(self._clusterer, embedding)
         return labels

@@ -1,3 +1,4 @@
+import numpy as np
 import cupy as cp
 from cuvs.neighbors import cagra
 
@@ -17,9 +18,9 @@ class AnomalyDetectorGPU:
 
         search_params = cagra.SearchParams()
         distances, _ = cagra.search(search_params, self._index, calibration_embedding_gpu, k=2)
-        self_distances = cp.asnumpy(distances)[:, 1]
+        distances_cp = cp.asarray(distances)
+        self_distances = cp.asnumpy(distances_cp)[:, 1]
 
-        import numpy as np
         self.epsilon_regime = float(np.percentile(self_distances, self._percentile))
         return self.epsilon_regime
 
@@ -30,11 +31,14 @@ class AnomalyDetectorGPU:
         embedding_gpu = cp.asarray(embedding, dtype=cp.float32)
         search_params = cagra.SearchParams()
         distances, _ = cagra.search(search_params, self._index, embedding_gpu, k=1)
-        distances_host = cp.asnumpy(distances)[:, 0]
+        distances_cp = cp.asarray(distances)
+        distances_host = cp.asnumpy(distances_cp)[:, 0]
+
+        cluster_labels_host = cp.asnumpy(cluster_labels) if hasattr(cluster_labels, "get") else np.asarray(cluster_labels)
 
         results = []
-        for dist, label in zip(distances_host, cluster_labels):
-            anomaly = bool(dist >= self.epsilon_regime) or label == -1
+        for dist, label in zip(distances_host, cluster_labels_host):
+            anomaly = bool(dist >= self.epsilon_regime) or int(label) == -1
             topology_id = TOXIC_VORTEX if anomaly else str(int(label))
             results.append(RegimeState(
                 topology_id=topology_id,
