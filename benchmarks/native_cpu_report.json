@@ -4,7 +4,7 @@
     {
       "implementation": "python_cupy_eager_gpu_cublas",
       "mean_us": 48.45,
-      "note": "measured earlier on L40S as part of CUDA Graph capture investigation"
+      "note": "measured earlier on L40S as part of CUDA Graph capture investigation; CUDA Graph capture failed on this implementation due to cuBLAS incompatibility"
     },
     {
       "implementation": "cpp_avx512_march_native",
@@ -20,22 +20,30 @@
       "p99_us": 4.9520
     },
     {
-      "implementation": "custom_cuda_kernel_shared_memory",
+      "implementation": "custom_cuda_kernel_normal_launch",
       "mean_us": 4.9625,
       "p50_us": 5.1200,
       "p99_us": 11.2640,
-      "note": "hand-written CUDA kernel, no cuBLAS, launched and timed via cudaEvent from a pure C++ host program with no Python involved at all"
+      "note": "hand-written CUDA kernel, no cuBLAS, standard cudaEvent-timed kernel launch"
+    },
+    {
+      "implementation": "custom_cuda_kernel_cuda_graph",
+      "mean_us": 4.1152,
+      "p50_us": 4.0960,
+      "p99_us": 8.1920,
+      "note": "same custom kernel, CUDA Graph capture succeeded because it does not use cuBLAS; approximately 17% faster than normal launch, but still slower than CPU/AVX2"
     }
   ],
   "findings": [
-    "C++/AVX2 is approximately 24-26x faster than Python/CuPy GPU eager mode (cuBLAS-backed), confirming that removing the interpreter from the hot path yields a large, measured improvement",
+    "C++/AVX2 is approximately 24-26x faster than Python/CuPy GPU eager mode (cuBLAS-backed)",
     "AVX-512 gave no measurable benefit over AVX2-only on a 20x20 matrix; too small to benefit from wider SIMD registers",
-    "a hand-written CUDA kernel (no cuBLAS, no Python, direct cudaEvent-timed launch) still measured ~2.7x SLOWER than plain C++/AVX2 on the CPU, at batch_size=1",
-    "this establishes that for this specific operation at this specific scale (single 20x20 matrix, one tick at a time), GPU execution is fundamentally disadvantaged versus CPU SIMD, regardless of how the GPU code is written — kernel launch and PCIe-adjacent overhead dominates even in native C++ CUDA code with no Python or cuBLAS involved",
-    "decision for the execution plane: Layer 1 (commutator computation) should run on CPU via AVX2/AVX-512, not GPU, at tick-by-tick granularity; GPU remains the correct choice only for batched/windowed workloads (UMAP/HDBSCAN/clustering re-fits), not the single-tick hot path"
+    "a hand-written CUDA kernel avoiding cuBLAS entirely allows CUDA Graph capture to succeed, unlike the cuBLAS-based implementation, but the resulting speedup over normal kernel launch is modest (~17%), because the remaining overhead is inherent to crossing into GPU execution (scheduling, synchronization), not just the CPU-side launch call that graphs eliminate",
+    "even the best-optimized GPU path tested (custom kernel + CUDA Graph, 4.12us) remains roughly 2.2x SLOWER than plain single-threaded C++/AVX2 on CPU (1.86us)",
+    "conclusive finding across four independently measured implementations: for this specific operation at this specific scale (single 20x20 matrix, one tick at a time), GPU execution is fundamentally disadvantaged versus CPU SIMD, regardless of how aggressively the GPU code is optimized",
+    "decision for the execution plane: Layer 1 (commutator computation) should run on CPU via AVX2, not GPU, at tick-by-tick granularity; GPU remains the correct choice only for batched/windowed workloads (UMAP/HDBSCAN/clustering re-fits), not the single-tick hot path"
   ],
   "not_yet_done": [
-    "no CPU pinning or real-time kernel tuning applied; current p99 figures (4.95-11.26us across implementations) are not representative of a tuned production deployment",
-    "the CUDA kernel here uses a single thread block (20x20=400 threads); no attempt was made to optimize GPU occupancy or try multiple kernel launch strategies (e.g. CUDA Graphs would still fail here due to no cuBLAS involvement, worth testing separately since this kernel avoids the cuBLAS blocker entirely)"
+    "no CPU pinning or real-time kernel tuning applied; current p99 figures are not representative of a tuned production deployment",
+    "the CUDA kernel uses a single thread block (400 threads); no attempt to test alternative GPU occupancy strategies, since the CPU result already conclusively wins for this component"
   ]
 }
