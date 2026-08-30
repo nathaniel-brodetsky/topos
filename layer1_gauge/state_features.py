@@ -13,6 +13,7 @@ class GaugeState:
     top_eigenvalues: np.ndarray
     curl_mean: float
     curl_std: float
+    price_momentum: float
 
     def to_vector(self) -> np.ndarray:
         return np.concatenate([
@@ -22,6 +23,7 @@ class GaugeState:
                 self.directed_pressure,
                 self.curl_mean,
                 self.curl_std,
+                self.price_momentum,
             ], dtype=np.float32),
             self.top_eigenvalues.astype(np.float32),
         ])
@@ -31,6 +33,7 @@ def compute_gauge_state(
     a: np.ndarray,
     a_prev: np.ndarray,
     dv: np.ndarray,
+    price_momentum: float = 0.0,
     top_k: int = 5,
 ) -> GaugeState:
     f = compute_commutator(a, a_prev)
@@ -50,4 +53,5 @@ def compute_gauge_state(
         top_eigenvalues=top_eigenvalues,
         curl_mean=float(np.mean(curl.astype(np.float32))),
         curl_std=float(np.std(curl.astype(np.float32))),
+        price_momentum=price_momentum,
     )

@@ -39,7 +39,7 @@ def build_feed(config: dict):
     )
 
 
-def run_pipeline(config: dict, n_calibration: int, n_live: int):
+def run_pipeline(config: dict, n_calibration: int, n_live: int, momentum_window: int = 5):
     layer0_cfg = config["layer0"]
 
     feed = build_feed(config)
@@ -52,10 +52,16 @@ def run_pipeline(config: dict, n_calibration: int, n_live: int):
     a_prev = None
     gauge_states = []
     mid_prices = []
+    mid_price_history = []
 
     for tau, a, dv, mid_price in pipeline.run():
+        mid_price_history.append(mid_price)
         if a_prev is not None:
-            gauge_states.append(compute_gauge_state(a, a_prev, dv))
+            if len(mid_price_history) > momentum_window:
+                momentum = mid_price_history[-1] - mid_price_history[-1 - momentum_window]
+            else:
+                momentum = 0.0
+            gauge_states.append(compute_gauge_state(a, a_prev, dv, price_momentum=momentum))
             mid_prices.append(mid_price)
         a_prev = a
         if len(gauge_states) >= n_calibration + n_live:
@@ -63,6 +69,7 @@ def run_pipeline(config: dict, n_calibration: int, n_live: int):
 
     vectors = np.stack([gs.to_vector() for gs in gauge_states])
     mid_prices = np.array(mid_prices)
+
 
     calibration_vectors = vectors[:n_calibration]
     live_vectors = vectors[n_calibration:]
@@ -93,7 +100,7 @@ def run_pipeline(config: dict, n_calibration: int, n_live: int):
     live_labels = clusterer.predict(live_embedding)
     regime_states = detector.evaluate(live_embedding, live_labels)
 
-    value_model = ValueModel(target_horizon_ticks=5)
+    value_model = ValueModel(target_horizon_ticks=2)
     value_model.train(calibration_vectors, calibration_mid_prices)
     live_value_predictions = value_model.predict(live_vectors)
     live_actual_returns = compute_forward_returns(live_mid_prices, value_model.target_horizon_ticks)
