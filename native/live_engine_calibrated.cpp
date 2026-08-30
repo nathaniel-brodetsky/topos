@@ -17,6 +17,7 @@
 #include <array>
 #include "orderbook_state.hpp"
 #include "kmeans_calibration.hpp"
+#include "regime_labeling.hpp"
 
 namespace beast = boost::beast;
 namespace websocket = beast::websocket;
@@ -55,7 +56,7 @@ alignas(64) float tmp2[NP * NP];
 std::vector<std::array<float, CALIB_DIM>> calibration_data;
 std::vector<std::array<float, CALIB_DIM>> centroids;
 std::vector<float> epsilon_vec;
-std::vector<int> centroid_regime_id;
+std::vector<SemanticRegime> centroid_regime;
 std::atomic<bool> calibration_done{false};
 
 inline void build_adjacency_matrix_avx(const float* dV, const float* P) {
@@ -134,10 +135,10 @@ inline int centroid_lookup(const std::array<float, CALIB_DIM>& query, float* out
     return best_idx;
 }
 
-inline Decision decide(int regime_id, bool anomaly) {
+inline Decision decide(SemanticRegime regime, bool anomaly) {
     if (anomaly) return Decision::CANCEL_ALL;
-    if (regime_id == 1) return Decision::MARKET_TAKER;
-    if (regime_id == 0) return Decision::LIQUIDITY_PROVISION;
+    if (regime == SemanticRegime::IMPULSE) return Decision::MARKET_TAKER;
+    if (regime == SemanticRegime::EQUILIBRIUM) return Decision::LIQUIDITY_PROVISION;
     return Decision::HOLD;
 }
 
@@ -245,19 +246,24 @@ void hot_path_thread_fn() {
 
     printf("[hot-path] calibration data collected (%zu samples), running k-means...\n", calibration_data.size());
 
-    std::mt19937 rng(123);
-    std::uniform_int_distribution<int> regime_dist(0, 2);
-
     CalibrationResult result = run_kmeans_calibration(calibration_data, K, 20, 0.90f);
     centroids = result.centroids;
     epsilon_vec = result.epsilon;
-    centroid_regime_id.resize(K);
-    for (int i = 0; i < K; ++i) centroid_regime_id[i] = regime_dist(rng);
+    centroid_regime = label_centroids_by_pressure(calibration_data, result.final_assignment, K);
+
+    int n_impulse = 0, n_equilibrium = 0, n_transitional = 0;
+    for (auto r : centroid_regime) {
+        if (r == SemanticRegime::IMPULSE) n_impulse++;
+        else if (r == SemanticRegime::EQUILIBRIUM) n_equilibrium++;
+        else n_transitional++;
+    }
 
     printf("[hot-path] calibration complete. centroids=%d epsilon_range=[%.4f, %.4f]\n",
            K,
            *std::min_element(epsilon_vec.begin(), epsilon_vec.end()),
            *std::max_element(epsilon_vec.begin(), epsilon_vec.end()));
+    printf("[hot-path] regime labeling: IMPULSE=%d EQUILIBRIUM=%d TRANSITIONAL=%d (of %d centroids)\n",
+           n_impulse, n_equilibrium, n_transitional, K);
     calibration_done.store(true, std::memory_order_release);
 
     printf("[hot-path] entering LIVE decision phase\n\n");
@@ -272,7 +278,7 @@ void hot_path_thread_fn() {
             float best_dist;
             int best_idx = centroid_lookup(query, &best_dist);
             bool anomaly = best_dist > epsilon_vec[best_idx];
-            Decision decision = decide(centroid_regime_id[best_idx], anomaly);
+            Decision decision = decide(centroid_regime[best_idx], anomaly);
 
             uint64_t count = messages_processed.fetch_add(1, std::memory_order_relaxed) + 1;
 

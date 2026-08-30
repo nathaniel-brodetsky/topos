@@ -12,6 +12,7 @@ constexpr int CALIB_DIM = 5;
 struct CalibrationResult {
     std::vector<std::array<float, CALIB_DIM>> centroids;
     std::vector<float> epsilon;
+    std::vector<int> final_assignment;
 };
 
 inline float squared_dist(const std::array<float, CALIB_DIM>& a, const std::array<float, CALIB_DIM>& b) {
@@ -83,5 +84,5 @@ inline CalibrationResult run_kmeans_calibration(
         if (epsilon[c] <= 0.0f) epsilon[c] = 1.0f;
     }
 
-    return {centroids, epsilon};
+    return {centroids, epsilon, assignment};
 }
