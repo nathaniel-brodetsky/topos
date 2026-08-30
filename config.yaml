@@ -1,0 +1,14 @@
+layer0:
+  n_levels_per_side: 10
+  v_threshold: 1000.0
+  eps_stabilizer: 0.01
+
+mock_feed:
+  seed: 42
+  mid_price_start: 100.0
+  tick_size: 0.01
+  base_volume: 50.0
+  volume_jitter: 20.0
+
+runtime:
+  backend: numpy
