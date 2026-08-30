@@ -19,7 +19,7 @@ class Layer0Pipeline:
         self._feed = feed
         self._prev_volumes = None
 
-    def run(self) -> Iterator[Tuple[int, np.ndarray]]:
+    def run(self) -> Iterator[Tuple[int, np.ndarray, np.ndarray, float]]:
         for snap in self._feed.stream():
             volumes, prices = _levels_and_prices(snap)
 
@@ -36,4 +36,4 @@ class Layer0Pipeline:
 
             a = build_adjacency_matrix(dv=dv, prices=prices, eps=self._eps)
             a_fp16 = normalize_and_pack_fp16(a)
-            yield self._clock.tau, a_fp16
+            yield self._clock.tau, a_fp16, dv, snap.mid_price

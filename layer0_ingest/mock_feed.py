@@ -8,6 +8,7 @@ class LobSnapshot:
     bid_volumes: np.ndarray
     ask_prices: np.ndarray
     ask_volumes: np.ndarray
+    mid_price: float
 
 
 class MockFeed:
@@ -37,7 +38,7 @@ class MockFeed:
             self._base_volume + self._rng.normal(0, self._volume_jitter, 10),
             a_min=0.0, a_max=None,
         )
-        return LobSnapshot(bid_prices, bid_volumes, ask_prices, ask_volumes)
+        return LobSnapshot(bid_prices, bid_volumes, ask_prices, ask_volumes, self._mid)
 
     def stream(self):
         while True:

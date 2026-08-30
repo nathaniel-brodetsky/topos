@@ -16,14 +16,12 @@ def run(backend: str = "numpy", n_calibration: int = 300, n_live: int = 2000, v_
     feed = MockFeed(seed=42, mid_price_start=100.0, tick_size=0.01, base_volume=50.0, volume_jitter=20.0)
     pipeline = Layer0Pipeline(v_threshold=v_threshold, eps_stabilizer=0.01, feed=feed)
 
-    rng = np.random.default_rng(0)
     a_prev = None
     calibration_gauge_states = []
     live_ticks = []
 
-    for tau, a in pipeline.run():
+    for tau, a, dv, mid_price in pipeline.run():
         if a_prev is not None:
-            dv = rng.normal(0, 1, 20)
             if len(calibration_gauge_states) < n_calibration:
                 calibration_gauge_states.append(compute_gauge_state(a, a_prev, dv))
             else:

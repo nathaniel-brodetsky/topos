@@ -2,12 +2,12 @@ import argparse
 import numpy as np
 import yaml
 
+from validation import check_cluster_degeneracy, check_calibration_leakage, summarize_decisions, check_value_model_predictions
+
+from layer4_decision import decide, ValueModel
 from layer0_ingest import Layer0Pipeline, MockFeed
 from layer1_gauge import compute_gauge_state
 from layer2_topology import UMAPProjector, RegimeClusterer, AnomalyDetector, RegimeLabeler
-from layer4_decision import decide
-from validation import check_cluster_degeneracy, check_calibration_leakage, summarize_decisions
-
 
 def load_config(path: str = "config.yaml") -> dict:
     with open(path) as f:
@@ -31,22 +31,27 @@ def run_pipeline(config: dict, n_calibration: int, n_live: int):
         feed=feed,
     )
 
-    rng = np.random.default_rng(mock_cfg["seed"])
     a_prev = None
     gauge_states = []
+    mid_prices = []
 
-    for tau, a in pipeline.run():
+    for tau, a, dv, mid_price in pipeline.run():
         if a_prev is not None:
-            dv = rng.normal(0, 1, 20)
             gauge_states.append(compute_gauge_state(a, a_prev, dv))
+            mid_prices.append(mid_price)
         a_prev = a
         if len(gauge_states) >= n_calibration + n_live:
             break
 
     vectors = np.stack([gs.to_vector() for gs in gauge_states])
+    mid_prices = np.array(mid_prices)
+
     calibration_vectors = vectors[:n_calibration]
     live_vectors = vectors[n_calibration:]
     calibration_gauge_states = gauge_states[:n_calibration]
+
+    calibration_mid_prices = mid_prices[:n_calibration]
+    live_mid_prices = mid_prices[n_calibration:]
 
     projector = UMAPProjector(n_components=5)
     calibration_embedding = projector.fit(calibration_vectors)
@@ -70,6 +75,14 @@ def run_pipeline(config: dict, n_calibration: int, n_live: int):
     live_labels = clusterer.predict(live_embedding)
     regime_states = detector.evaluate(live_embedding, live_labels)
 
+    value_model = ValueModel(target_horizon_ticks=5)
+    value_model.train(calibration_vectors, calibration_mid_prices)
+    live_value_predictions = value_model.predict(live_vectors)
+
+    from layer4_decision.value_model import compute_forward_returns
+    live_actual_returns = compute_forward_returns(live_mid_prices, value_model.target_horizon_ticks)
+    value_check = check_value_model_predictions(live_value_predictions, live_actual_returns)
+
     decisions = []
     for rs in regime_states:
         semantic = labeler.resolve(rs.topology_id)
@@ -86,8 +99,11 @@ def run_pipeline(config: dict, n_calibration: int, n_live: int):
         "epsilon_regime": epsilon,
         "n_calibration": n_calibration,
         "n_live": n_live,
+        "mid_prices": mid_prices,
+        "vectors": vectors,
+        "live_value_predictions": live_value_predictions,
+        "value_check": value_check,
     }
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -103,6 +119,7 @@ def main():
     print(results["degeneracy"])
     print(results["leakage"])
     print(results["backtest"])
+    print(results["value_check"])
 
     if args.report:
         from reporting import build_report, plot_decision_distribution
