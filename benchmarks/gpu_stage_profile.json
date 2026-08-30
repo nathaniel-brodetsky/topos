@@ -1,0 +1,35 @@
+{
+  "stages": [
+    {
+      "stage": "umap_transform",
+      "mean_ms": 1.8555579173564911,
+      "p50_ms": 1.8139520287513733,
+      "p99_ms": 2.8878327178955026
+    },
+    {
+      "stage": "hdbscan_predict",
+      "mean_ms": 0.42287583962082864,
+      "p50_ms": 0.3896320015192032,
+      "p99_ms": 1.232373715639113
+    },
+    {
+      "stage": "cagra_search_evaluate",
+      "mean_ms": 1.5941710430383682,
+      "p50_ms": 1.5678080320358276,
+      "p99_ms": 2.6846809935569764
+    },
+    {
+      "stage": "labeler_decide_cpu",
+      "mean_ms": 0.00620975999161601,
+      "p50_ms": 0.005247999913990498,
+      "p99_ms": 0.022961600515991318
+    }
+  ],
+  "total_mean_ms": 3.878814560007304,
+  "interpretation": [
+    "umap_transform dominates at approximately half of total tick latency; UMAP.transform on a single point requires nearest-neighbor search against the calibration graph and is not well-amortized at batch size 1",
+    "cagra_search_evaluate is roughly forty percent of total latency, far above the spec's approximately 120 nanosecond CAGRA plus clustering target; this gap is attributed to Python wrapper call overhead around the native CAGRA C++ implementation, not the underlying algorithm, since CAGRA is specifically designed for microsecond-scale ANN search",
+    "hdbscan_predict and the CPU-side decision table are comparatively cheap",
+    "this profile identifies umap_transform and cagra_search_evaluate as the two components a native C++/CUDA execution plane would need to reimplement first to approach the specification's latency targets"
+  ]
+}
