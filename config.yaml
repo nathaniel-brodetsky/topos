@@ -10,5 +10,11 @@ mock_feed:
   base_volume: 50.0
   volume_jitter: 20.0
 
+regime_mock_feed:
+  enabled: true
+  seed: 42
+  mid_price_start: 100.0
+  tick_size: 0.01
+
 runtime:
   backend: numpy

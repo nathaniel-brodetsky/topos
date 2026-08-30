@@ -2,29 +2,47 @@ import argparse
 import numpy as np
 import yaml
 
-from validation import check_cluster_degeneracy, check_calibration_leakage, summarize_decisions, check_value_model_predictions
-
-from layer4_decision import decide, ValueModel
-from layer0_ingest import Layer0Pipeline, MockFeed
+from layer0_ingest import Layer0Pipeline, MockFeed, RegimeMockFeed, default_regimes
 from layer1_gauge import compute_gauge_state
 from layer2_topology import UMAPProjector, RegimeClusterer, AnomalyDetector, RegimeLabeler
+from layer4_decision import decide, ValueModel
+from layer4_decision.value_model import compute_forward_returns
+from validation import (
+    check_cluster_degeneracy,
+    check_calibration_leakage,
+    summarize_decisions,
+    check_value_model_predictions,
+)
+
 
 def load_config(path: str = "config.yaml") -> dict:
     with open(path) as f:
         return yaml.safe_load(f)
 
 
-def run_pipeline(config: dict, n_calibration: int, n_live: int):
+def build_feed(config: dict):
+    regime_cfg = config.get("regime_mock_feed", {})
+    if regime_cfg.get("enabled", False):
+        return RegimeMockFeed(
+            seed=regime_cfg["seed"],
+            mid_price_start=regime_cfg["mid_price_start"],
+            tick_size=regime_cfg["tick_size"],
+            regimes=default_regimes(),
+        )
     mock_cfg = config["mock_feed"]
-    layer0_cfg = config["layer0"]
-
-    feed = MockFeed(
+    return MockFeed(
         seed=mock_cfg["seed"],
         mid_price_start=mock_cfg["mid_price_start"],
         tick_size=mock_cfg["tick_size"],
         base_volume=mock_cfg["base_volume"],
         volume_jitter=mock_cfg["volume_jitter"],
     )
+
+
+def run_pipeline(config: dict, n_calibration: int, n_live: int):
+    layer0_cfg = config["layer0"]
+
+    feed = build_feed(config)
     pipeline = Layer0Pipeline(
         v_threshold=layer0_cfg["v_threshold"],
         eps_stabilizer=layer0_cfg["eps_stabilizer"],
@@ -78,8 +96,6 @@ def run_pipeline(config: dict, n_calibration: int, n_live: int):
     value_model = ValueModel(target_horizon_ticks=5)
     value_model.train(calibration_vectors, calibration_mid_prices)
     live_value_predictions = value_model.predict(live_vectors)
-
-    from layer4_decision.value_model import compute_forward_returns
     live_actual_returns = compute_forward_returns(live_mid_prices, value_model.target_horizon_ticks)
     value_check = check_value_model_predictions(live_value_predictions, live_actual_returns)
 
@@ -104,6 +120,7 @@ def run_pipeline(config: dict, n_calibration: int, n_live: int):
         "live_value_predictions": live_value_predictions,
         "value_check": value_check,
     }
+
 
 def main():
     parser = argparse.ArgumentParser()
