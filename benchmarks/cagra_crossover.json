@@ -1,0 +1,46 @@
+{
+  "results": [
+    {
+      "n_points": 300,
+      "brute_force_mean_us": 94.83248002827168,
+      "cagra_mean_us": 1160.207845568657,
+      "winner": "brute_force"
+    },
+    {
+      "n_points": 1000,
+      "brute_force_mean_us": 97.37215973436832,
+      "cagra_mean_us": 1210.870559811592,
+      "winner": "brute_force"
+    },
+    {
+      "n_points": 5000,
+      "brute_force_mean_us": 108.93408004194498,
+      "cagra_mean_us": 559.5339211821556,
+      "winner": "brute_force"
+    },
+    {
+      "n_points": 10000,
+      "brute_force_mean_us": 147.97184012830257,
+      "cagra_mean_us": 558.7387198209763,
+      "winner": "brute_force"
+    },
+    {
+      "n_points": 50000,
+      "brute_force_mean_us": 335.1251193881035,
+      "cagra_mean_us": 582.0755183696747,
+      "winner": "brute_force"
+    },
+    {
+      "n_points": 100000,
+      "brute_force_mean_us": 467.3209595680237,
+      "cagra_mean_us": 630.2278408408165,
+      "winner": "brute_force"
+    },
+    {
+      "n_points": 500000,
+      "brute_force_mean_us": 634.43872153759,
+      "cagra_mean_us": 1253.290560245514,
+      "winner": "brute_force"
+    }
+  ]
+}

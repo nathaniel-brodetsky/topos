@@ -1,0 +1,27 @@
+{
+  "investigation": "when does CAGRA outperform brute_force for Layer 2/3 anomaly-distance search",
+  "original_hypothesis_from_pitch": "CAGRA is designed for huge graphs and will win as the historical attractor map scales to 10k-100k+ points in production",
+  "finding": "hypothesis was WRONG as originally stated; index size alone does not determine the crossover, query batch size does",
+  "single_query_scale_sweep": {
+    "note": "brute_force vs CAGRA at query_batch_size=1, varying index size from 300 to 500,000 points",
+    "result": "brute_force wins at every tested index size (300 to 500,000 points); CAGRA never wins at batch_size=1"
+  },
+  "query_batch_sweep_at_500k_points": [
+    {"query_batch_size": 1, "brute_force_us": 680.86, "cagra_us": 1306.19, "winner": "brute_force"},
+    {"query_batch_size": 10, "brute_force_us": 627.48, "cagra_us": 1294.08, "winner": "brute_force"},
+    {"query_batch_size": 100, "brute_force_us": 481.50, "cagra_us": 1342.74, "winner": "brute_force"},
+    {"query_batch_size": 1000, "brute_force_us": 2421.05, "cagra_us": 1608.50, "winner": "CAGRA"},
+    {"query_batch_size": 10000, "brute_force_us": 17607.63, "cagra_us": 4363.81, "winner": "CAGRA"}
+  ],
+  "cpu_comparison_at_500k_points_batch_1": {
+    "cpu_sklearn_ball_tree_us": 551.82,
+    "gpu_brute_force_us": 680.86,
+    "note": "CPU and GPU are within the same order of magnitude at batch_size=1 against a 500k-point index; neither dominates decisively, unlike Layer 1 where CPU/AVX2 won by 2.7-26x"
+  },
+  "revised_architectural_recommendation": [
+    "the crossover for CAGRA is query BATCH SIZE (roughly 1000+), not index size; CAGRA does not help the single-tick hot path regardless of how large the historical attractor map grows",
+    "for tick-by-tick (batch_size=1) anomaly-distance search, CPU (ball_tree) and GPU (brute_force) perform comparably (within ~20% of each other) even against a 500,000-point index; this needs re-testing on the actual target deployment hardware before committing to either",
+    "CAGRA should be used only for batch/windowed workloads: periodic Section 4.4 background re-clustering, or bulk re-scoring of historical windows, not the live single-tick decision path",
+    "this directly revises the previously proposed heterogeneous architecture: Layer 2/3 anomaly search does NOT need to run on GPU/CAGRA for the hot path; it can run on CPU or GPU-brute-force interchangeably at batch_size=1, and GPU/CAGRA is reserved specifically for the async refit workload where it was already planned to run"
+  ]
+}

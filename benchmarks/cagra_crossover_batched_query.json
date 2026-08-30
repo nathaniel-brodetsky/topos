@@ -1,0 +1,35 @@
+{
+  "n_points": 500000,
+  "results": [
+    {
+      "query_batch_size": 1,
+      "brute_force_mean_us": 680.8608013391495,
+      "cagra_mean_us": 1306.1875188350677,
+      "winner": "brute_force"
+    },
+    {
+      "query_batch_size": 10,
+      "brute_force_mean_us": 627.476481795311,
+      "cagra_mean_us": 1294.0841591358185,
+      "winner": "brute_force"
+    },
+    {
+      "query_batch_size": 100,
+      "brute_force_mean_us": 481.4998382329941,
+      "cagra_mean_us": 1342.7449560165405,
+      "winner": "brute_force"
+    },
+    {
+      "query_batch_size": 1000,
+      "brute_force_mean_us": 2421.046712398529,
+      "cagra_mean_us": 1608.4969556331635,
+      "winner": "CAGRA"
+    },
+    {
+      "query_batch_size": 10000,
+      "brute_force_mean_us": 17607.625637054443,
+      "cagra_mean_us": 4363.81311416626,
+      "winner": "CAGRA"
+    }
+  ]
+}
