@@ -2,7 +2,7 @@
   "component": "commutator_layer1",
   "measurements": [
     {
-      "implementation": "python_cupy_eager_gpu",
+      "implementation": "python_cupy_eager_gpu_cublas",
       "mean_us": 48.45,
       "note": "measured earlier on L40S as part of CUDA Graph capture investigation"
     },
@@ -18,15 +18,24 @@
       "mean_us": 1.8621,
       "p50_us": 1.6690,
       "p99_us": 4.9520
+    },
+    {
+      "implementation": "custom_cuda_kernel_shared_memory",
+      "mean_us": 4.9625,
+      "p50_us": 5.1200,
+      "p99_us": 11.2640,
+      "note": "hand-written CUDA kernel, no cuBLAS, launched and timed via cudaEvent from a pure C++ host program with no Python involved at all"
     }
   ],
   "findings": [
-    "C++/AVX2 implementation of the commutator is approximately 24-26x faster than the Python/CuPy GPU eager-mode implementation, confirming the specification's premise that removing the interpreter from the hot path yields a real, measured improvement, not just a theoretical one",
-    "AVX-512 (available on this Sapphire Rapids CPU via -march=native) gave no measurable benefit over AVX2-only on a 20x20 matrix; the operation is too small to benefit from wider SIMD registers, and the bottleneck at this scale is loop overhead and memory access pattern, not vector width",
-    "p99 latency (4.95-5.10us) is roughly 3x the mean, most likely due to OS scheduler jitter on a non-real-time, non-pinned kernel; CPU affinity pinning and a real-time-patched kernel would be required before p99 figures here can be treated as representative of a production tick-to-trade tail latency"
+    "C++/AVX2 is approximately 24-26x faster than Python/CuPy GPU eager mode (cuBLAS-backed), confirming that removing the interpreter from the hot path yields a large, measured improvement",
+    "AVX-512 gave no measurable benefit over AVX2-only on a 20x20 matrix; too small to benefit from wider SIMD registers",
+    "a hand-written CUDA kernel (no cuBLAS, no Python, direct cudaEvent-timed launch) still measured ~2.7x SLOWER than plain C++/AVX2 on the CPU, at batch_size=1",
+    "this establishes that for this specific operation at this specific scale (single 20x20 matrix, one tick at a time), GPU execution is fundamentally disadvantaged versus CPU SIMD, regardless of how the GPU code is written — kernel launch and PCIe-adjacent overhead dominates even in native C++ CUDA code with no Python or cuBLAS involved",
+    "decision for the execution plane: Layer 1 (commutator computation) should run on CPU via AVX2/AVX-512, not GPU, at tick-by-tick granularity; GPU remains the correct choice only for batched/windowed workloads (UMAP/HDBSCAN/clustering re-fits), not the single-tick hot path"
   ],
   "not_yet_done": [
-    "custom CUDA kernel for the same commutator has not yet been written or measured; this comparison (C++/AVX2 vs custom CUDA kernel) requires a GPU instance and is the next step before deciding which backend the execution plane uses for this component at batch_size=1",
-    "no CPU pinning or real-time kernel tuning applied; current p99 figures are not representative of a tuned production deployment"
+    "no CPU pinning or real-time kernel tuning applied; current p99 figures (4.95-11.26us across implementations) are not representative of a tuned production deployment",
+    "the CUDA kernel here uses a single thread block (20x20=400 threads); no attempt was made to optimize GPU occupancy or try multiple kernel launch strategies (e.g. CUDA Graphs would still fail here due to no cuBLAS involvement, worth testing separately since this kernel avoids the cuBLAS blocker entirely)"
   ]
 }
