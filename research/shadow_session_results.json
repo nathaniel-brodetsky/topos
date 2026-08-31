@@ -61,5 +61,21 @@
     },
     "conclusion": "hypothesis REJECTED for churn frequency: even with 358 potential premature cancellations suppressed (orders allowed to sit through anomaly regimes for the entire session), maker_ratio remained exactly 0.0%. This confirms the root cause is queue depth, not cancellation frequency -- the strategy joins the queue behind the full resting volume at best bid/ask (4-25 BTC observed), and realistic BTCUSDT aggTrade flow over these session lengths is insufficient to exhaust that queue regardless of how long the order is allowed to wait. Tuning CANCEL_ALL sensitivity or cooldown parameters will not fix maker fill rate; the order placement logic itself (posting at the very back of a deep queue) is the structural problem.",
     "implication_for_future_work": "a maker strategy on this instrument/liquidity profile would need either much larger size relative to queue depth (capital-intensive and risky), joining thinner price levels further from best bid/ask (worse expected fill price if it does fill), or abandoning passive queue-joining in favor of a different maker mechanism entirely (e.g. quote inside the spread, accept adverse selection risk explicitly). This was not tested further; it is a separate, larger design question."
+  },
+  "thin_level_quoting_experiment": {
+    "change": "LIQUIDITY_PROVISION now scans top-3 bid/ask levels and quotes at the level with minimum resting volume, instead of always quoting at best bid/ask",
+    "result": {
+      "duration_seconds": 150,
+      "filled_orders": 246,
+      "maker_fills": 1,
+      "taker_fills": 245,
+      "maker_ratio_pct": 0.4,
+      "net_pnl": -7.57125,
+      "total_fees_paid": 7.687606,
+      "gross_pnl": 0.116357
+    },
+    "finding": "improvement is real but tiny: maker_ratio rose from 0.0% to 0.4% (first-ever maker fill observed, at queue_position=0.002 when placed vs typical 4-25 at best bid/ask). NET PnL remains deeply negative in the same range as prior runs (-4.5 to -9.4). Thin-level quoting alone is insufficient.",
+    "new_finding_from_log_inspection": "a third interacting variable was identified: order REPOST frequency. LIQUIDITY_PROVISION reposts a fresh pair of orders every tick where n_open_orders()==0, and VORTEX/CANCEL_ALL fires very frequently (TOXIC_VORTEX dominates the decision stream). The combined effect is that even thin-queue orders rarely survive long enough between repost cycles for enough trade volume to accumulate against them -- it is not purely queue depth OR purely cancel frequency, but their interaction with how often EQUILIBRIUM reposts a fresh order after the previous one clears (whether by cancel or fill).",
+    "next_experiment": "give newly placed maker orders a minimum lifetime (e.g. do not reposition/replace on ordinary EQUILIBRIUM ticks while an order is already resting, and do not let VORTEX cancel an order younger than N ticks unless anomaly severity is extreme) to let queue exhaustion actually have time to occur"
   }
 }
