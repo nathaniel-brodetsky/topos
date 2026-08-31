@@ -91,5 +91,39 @@
     },
     "still_negative_because": "gross PnL (0.048) still does not cover total fees (0.972) -- the ratio improved dramatically but the strategy is not yet profitable. Position is never explicitly closed when the signal fades (net_quantity=0.001 remained open at session end), meaning exits are implicit/accidental rather than designed.",
     "next_step": "add explicit exit logic (e.g. close position when regime shifts away from IMPULSE, or after a fixed holding period) rather than relying on opposite-direction signals to naturally net out the position"
+  },
+  "explicit_exit_and_lifetime_tuning": {
+    "description": "Added explicit position exit (close via opposite-side market order when regime leaves IMPULSE), with symmetric debounce on both entry (MIN_ORDER_LIFETIME_TICKS) and exit (MIN_POSITION_HOLD_TICKS) to prevent re-creating the churning problem on the exit side.",
+    "runs_by_lifetime_parameter": [
+      {
+        "lifetime_ticks": 100,
+        "run": "first",
+        "filled_orders": 51,
+        "net_pnl": -1.508344,
+        "maker_ratio_pct": 2.0
+      },
+      {
+        "lifetime_ticks": 100,
+        "run": "second (repeat, fresh market data)",
+        "filled_orders": 65,
+        "net_pnl": -1.842254,
+        "maker_ratio_pct": 0.0
+      },
+      {
+        "lifetime_ticks": 15,
+        "run": "single",
+        "filled_orders": 161,
+        "net_pnl": -4.768011,
+        "maker_ratio_pct": 1.2
+      }
+    ],
+    "conclusion": "lifetime=100 reproducibly outperforms lifetime=15 across two independent live sessions (NET PnL -1.5 to -1.8 vs -4.77), rejecting the hypothesis that shortening the hold period toward the ~10-tick signal horizon (from the earlier Predictive Power Check) would improve results. The reverse held: more frequent entry/exit cycling at short lifetime increased fee drag faster than it captured signal edge. This is a methodologically important finding: parameters should not be tuned toward the raw signal-decay horizon without accounting for the fixed cost (fee) per cycle -- optimal holding period is a function of both signal decay AND transaction cost, not signal decay alone.",
+    "caveat": "each run is a single ~150s live session on a live, non-repeatable market; the two lifetime=100 runs used different market windows (not a controlled A/B on identical data), so the exact PnL figures (-1.51 vs -1.84) reflect both the parameter and market variation. The qualitative ranking (100 clearly better than 15) is considered more reliable than the precise PnL values.",
+    "overall_progress_summary": {
+      "original_naive_strategy": -9.4,
+      "after_all_fixes_thin_quoting_plus_taker_debounce_plus_explicit_exit_lifetime_100": "-1.5 to -1.8 (reproduced twice)",
+      "improvement_factor": "approximately 5x reduction in loss magnitude",
+      "still_not_profitable": "yes -- gross PnL (0.06-0.20) still does not exceed total fees (1.6-2.0) in either lifetime=100 run; the strategy has gone from catastrophically unprofitable to modestly unprofitable, not to profitable"
+    }
   }
 }
