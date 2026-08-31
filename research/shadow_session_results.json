@@ -1,0 +1,51 @@
+{
+  "description": "Shadow Mode results: pessimistic ShadowMatcher (realistic queue-position fills, taker slippage, Binance fee schedule) driven by live TOPOS topology decisions on real Binance BTCUSDT futures market data",
+  "runs": [
+    {
+      "run": 1,
+      "duration_seconds": 150,
+      "value_model_loaded": true,
+      "total_ticks": 1362,
+      "filled_orders": 300,
+      "canceled_orders": 230,
+      "open_orders_at_shutdown_before_fix": 2,
+      "net_position_quantity": 0.004,
+      "gross_realized_pnl": 0.023911,
+      "total_fees_paid": 9.427043,
+      "net_pnl": -9.403132,
+      "maker_fills": 0,
+      "taker_fills": 300,
+      "maker_ratio_pct": 0.0
+    },
+    {
+      "run": 2,
+      "duration_seconds": 150,
+      "value_model_loaded": false,
+      "value_model_note": "value model .so file was not present on this run (lost between sessions on the instance); engine correctly fell back to running without it, not a crash, but this run's decisions did not use the value_pred signal at all",
+      "total_ticks": 1362,
+      "filled_orders": 190,
+      "canceled_orders": 268,
+      "open_orders_at_shutdown_after_forcecancel_fix": 0,
+      "net_position_quantity": -0.036,
+      "gross_realized_pnl": 0.409556,
+      "total_fees_paid": 5.969433,
+      "net_pnl": -5.559876,
+      "maker_fills": 0,
+      "taker_fills": 190,
+      "maker_ratio_pct": 0.0
+    }
+  ],
+  "consistent_finding_across_both_runs": {
+    "maker_ratio": "0.0% in both independent sessions -- not a single limit order filled via queue exhaustion in either run",
+    "net_pnl": "deeply negative in both runs, entirely driven by taker fees on a strategy that trades far more often than it should for its edge size",
+    "root_cause": "LIQUIDITY_PROVISION logic places limit orders at exactly best bid/best ask with queue_position initialized to the FULL resting volume at that level (often 4-25 BTC observed in logs); at Binance BTCUSDT liquidity and trade sizes (fractions of a BTC per aggTrade), exhausting that queue takes far longer than the time between our own CANCEL_ALL triggers (which fire very frequently -- TOXIC_VORTEX/anomaly regime dominates the decision stream, consistent with the earlier Predictive Power Check finding that TOXIC_VORTEX was the most common labeled regime in a comparable session)",
+    "consequence": "the strategy as currently implemented is a pure taker strategy in practice, despite being designed to alternate between maker and taker behavior by regime; it pays the 0.04% taker fee on every fill with no offsetting maker rebate income, on a directional signal (IMPULSE, from earlier validation) whose edge (~IC 0.42 at 10-tick horizon) is far too small and far too short-lived to cover round-trip taker fees plus the adverse selection of trading through an already-thin book"
+  },
+  "what_this_answers": "the partner's original question -- 'does the signal survive contact with real execution economics' -- is now answered: NO, not with this execution logic. The infrastructure (WS dual-stream, lock-free AttractorBridge, spinlock-guarded OMS, pessimistic queue-position matcher) all functioned correctly and as designed. The trading logic layered on top of it (naive best-bid/best-ask posting, immediate CANCEL_ALL on every anomaly tick) is not economically viable against real Binance BTCUSDT liquidity and fee structure.",
+  "not_yet_investigated": [
+    "whether posting further from best bid/ask (accepting worse queue position but avoiding constant cancel/repost churn) would improve maker fill rate",
+    "whether reducing CANCEL_ALL sensitivity (the anomaly threshold itself, separate from the refit cooldown already tuned) would reduce unnecessary order churn",
+    "whether the MARKET_TAKER logic's fixed tiny size (0.001 BTC) combined with the short-lived IMPULSE signal is fundamentally fee-negative regardless of tuning, given known IC decay past ~10-50 ticks",
+    "true unrealized mark-to-market PnL was not tracked during the session, only realized PnL from actual fills plus the final forced cancellation of any remaining open orders (which have no PnL impact since they never filled)"
+  ]
+}
