@@ -6,6 +6,11 @@
 
 class OrderBookState {
 public:
+    void clear() {
+        bids_.clear();
+        asks_.clear();
+    }
+
     void apply_bid_update(double price, double quantity) {
         if (quantity == 0.0) {
             bids_.erase(price);
