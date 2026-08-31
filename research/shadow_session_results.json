@@ -47,5 +47,19 @@
     "whether reducing CANCEL_ALL sensitivity (the anomaly threshold itself, separate from the refit cooldown already tuned) would reduce unnecessary order churn",
     "whether the MARKET_TAKER logic's fixed tiny size (0.001 BTC) combined with the short-lived IMPULSE signal is fundamentally fee-negative regardless of tuning, given known IC decay past ~10-50 ticks",
     "true unrealized mark-to-market PnL was not tracked during the session, only realized PnL from actual fills plus the final forced cancellation of any remaining open orders (which have no PnL impact since they never filled)"
-  ]
+  ],
+  "diagnostic_experiment_isolating_root_cause": {
+    "hypothesis": "is zero maker fill rate caused by CANCEL_ALL churn frequency (VORTEX regime firing too often to let orders wait), or by queue depth (resting volume too large relative to trade flow)?",
+    "method": "modified engine to suppress cancel_all specifically on VORTEX/anomaly decisions, letting maker limit orders ride through anomalies for the full 120s session (still force-canceled at shutdown, no PnL impact since unfilled)",
+    "result": {
+      "duration_seconds": 120,
+      "vortex_cancel_calls_suppressed": 358,
+      "maker_fills": 0,
+      "taker_fills": 152,
+      "maker_ratio_pct": 0.0,
+      "net_pnl": -4.51465
+    },
+    "conclusion": "hypothesis REJECTED for churn frequency: even with 358 potential premature cancellations suppressed (orders allowed to sit through anomaly regimes for the entire session), maker_ratio remained exactly 0.0%. This confirms the root cause is queue depth, not cancellation frequency -- the strategy joins the queue behind the full resting volume at best bid/ask (4-25 BTC observed), and realistic BTCUSDT aggTrade flow over these session lengths is insufficient to exhaust that queue regardless of how long the order is allowed to wait. Tuning CANCEL_ALL sensitivity or cooldown parameters will not fix maker fill rate; the order placement logic itself (posting at the very back of a deep queue) is the structural problem.",
+    "implication_for_future_work": "a maker strategy on this instrument/liquidity profile would need either much larger size relative to queue depth (capital-intensive and risky), joining thinner price levels further from best bid/ask (worse expected fill price if it does fill), or abandoning passive queue-joining in favor of a different maker mechanism entirely (e.g. quote inside the spread, accept adverse selection risk explicitly). This was not tested further; it is a separate, larger design question."
+  }
 }
