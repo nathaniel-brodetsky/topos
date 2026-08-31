@@ -77,5 +77,19 @@
     "finding": "improvement is real but tiny: maker_ratio rose from 0.0% to 0.4% (first-ever maker fill observed, at queue_position=0.002 when placed vs typical 4-25 at best bid/ask). NET PnL remains deeply negative in the same range as prior runs (-4.5 to -9.4). Thin-level quoting alone is insufficient.",
     "new_finding_from_log_inspection": "a third interacting variable was identified: order REPOST frequency. LIQUIDITY_PROVISION reposts a fresh pair of orders every tick where n_open_orders()==0, and VORTEX/CANCEL_ALL fires very frequently (TOXIC_VORTEX dominates the decision stream). The combined effect is that even thin-queue orders rarely survive long enough between repost cycles for enough trade volume to accumulate against them -- it is not purely queue depth OR purely cancel frequency, but their interaction with how often EQUILIBRIUM reposts a fresh order after the previous one clears (whether by cancel or fill).",
     "next_experiment": "give newly placed maker orders a minimum lifetime (e.g. do not reposition/replace on ordinary EQUILIBRIUM ticks while an order is already resting, and do not let VORTEX cancel an order younger than N ticks unless anomaly severity is extreme) to let queue exhaustion actually have time to occur"
+  },
+  "market_taker_debounce_breakthrough": {
+    "root_cause_found": "MARKET_TAKER decision fired on EVERY tick where the topology regime was IMPULSE, with no check for existing position -- since IMPULSE regime persists across multiple consecutive ticks (regimes don't flip every tick), the engine was sending a new 0.001 BTC market order on EVERY such tick, repeatedly paying the 0.04% taker fee to add to an already-held position rather than taking one position per signal occurrence. This explains the 190-360 taker fills seen in prior runs -- most were redundant re-entries into the same directional bet, not independent trading decisions.",
+    "fix": "added a position check before sending a new MARKET_TAKER order: skip if already positioned in the same direction (net_quantity > 0.0005 for BUY, < -0.0005 for SELL)",
+    "result": {
+      "duration_seconds": 150,
+      "filled_orders": 31,
+      "net_pnl": -0.924404,
+      "total_fees_paid": 0.9721,
+      "gross_pnl": 0.047695,
+      "improvement_vs_prior_run": "NET PnL improved from -10.98 to -0.92, an approximately 12x reduction in loss; filled_orders dropped from 360 to 31 (91% reduction), confirming most prior taker fills were redundant re-entries rather than independent decisions"
+    },
+    "still_negative_because": "gross PnL (0.048) still does not cover total fees (0.972) -- the ratio improved dramatically but the strategy is not yet profitable. Position is never explicitly closed when the signal fades (net_quantity=0.001 remained open at session end), meaning exits are implicit/accidental rather than designed.",
+    "next_step": "add explicit exit logic (e.g. close position when regime shifts away from IMPULSE, or after a fixed holding period) rather than relying on opposite-direction signals to naturally net out the position"
   }
 }
