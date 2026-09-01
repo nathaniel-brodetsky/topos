@@ -1,0 +1,41 @@
+{
+  "generated_at_utc": "2026-08-31T08:10:44.390321+00:00",
+  "n_calibration": 300,
+  "n_live": 200,
+  "epsilon_regime": 0.25902546217009603,
+  "cluster_degeneracy": {
+    "noise_fraction": 0.0,
+    "n_unique_clusters": 4,
+    "is_degenerate": false,
+    "reason": "ok"
+  },
+  "calibration_leakage": {
+    "calibration_anomaly_rate": 0.01,
+    "live_anomaly_rate": 0.295,
+    "drift_ratio": 29.499999999999996,
+    "leakage_suspected": false
+  },
+  "decision_backtest": {
+    "n_ticks": 200,
+    "decision_counts": {
+      "CANCEL_ALL": 80,
+      "MARKET_TAKER": 67,
+      "LIQUIDITY_PROVISION": 22,
+      "HOLD": 31
+    },
+    "is_decision_table_degenerate": false
+  },
+  "value_model": {
+    "mean_abs_prediction": 0.0511404424905777,
+    "std_prediction": 0.06592635065317154,
+    "correlation_with_actual": 0.5269700035024123,
+    "is_degenerate": false
+  },
+  "known_limitations": [
+    "mock feed now includes persistent regimes (EQUILIBRIUM/IMPULSE_UP/IMPULSE_DOWN/TOXIC_VORTEX) with real drift, replacing the earlier pure random walk",
+    "value model predictive power depends heavily on the added price_momentum feature; commutator/curl-derived features alone gave near-zero correlation (~0.08) with forward returns in earlier testing",
+    "cluster-to-regime semantic labeling (IMPULSE/EQUILIBRIUM) is threshold-based on directed_pressure percentiles, not derived from the specification",
+    "target_horizon_ticks=2 was chosen empirically via a horizon sweep on this specific mock feed's regime-transition speed; it is not a universal constant and must be re-derived for any other data source",
+    "all timings, if present in this run, are CPU reference measurements and are not representative of target DPU/GPU hardware"
+  ]
+}
