@@ -125,5 +125,54 @@
       "improvement_factor": "approximately 5x reduction in loss magnitude",
       "still_not_profitable": "yes -- gross PnL (0.06-0.20) still does not exceed total fees (1.6-2.0) in either lifetime=100 run; the strategy has gone from catastrophically unprofitable to modestly unprofitable, not to profitable"
     }
+  },
+  "strict_maker_paradigm_severity_threshold": {
+    "description": "Full paradigm shift per lead's direction: zero taker fee rule (place_market_order never called), IMPULSE reinterpreted as price-improvement queue-jump maker order, VORTEX severity thresholding (only cancel_all when best_dist/epsilon ratio > 5.0, not on any epsilon breach) to stop VORTEX from dominating the decision stream and starving maker orders of any lifetime.",
+    "severity_ratio_distribution_measured": {
+      "session_1": {
+        "n": 166,
+        "median": 1.58,
+        "p90": 5.59,
+        "p95": 7.69,
+        "p99": 18.81,
+        "max": 32.06
+      },
+      "session_2": {
+        "n": 117,
+        "median": 1.55,
+        "p90": 17.1,
+        "p95": 31.21,
+        "p99": 51.19,
+        "max": 52.67
+      },
+      "threshold_chosen": 5.0,
+      "rationale": "sits near p75-p90 across both measured sessions, filtering the bulk of mild epsilon breaches (median ratio ~1.5) while still catching genuine tail events"
+    },
+    "iteration_history": [
+      {
+        "version": "v12 initial sniper maker",
+        "bug": "cancel_all called every tick in IMPULSE branch with no debounce, causing 513 cancels vs 1 fill",
+        "net_pnl": 0.0,
+        "note": "artifact of near-zero trading activity, not a real result"
+      },
+      {
+        "version": "v13 impulse-side debounce added",
+        "result": "361 cancels vs 1 fill -- debounce alone insufficient, VORTEX branch (uncooled per lead's explicit request) was the dominant cancel source"
+      },
+      {
+        "version": "v14 debug instrumentation",
+        "finding": "vortex_cancel_calls=296 vs impulse_replace_calls=128 over 1363 ticks -- confirmed VORTEX firing on 21.7% of ticks was structurally incompatible with any maker order surviving long enough to fill"
+      },
+      {
+        "version": "v16 severity threshold (ratio > 5.0)",
+        "result": "canceled orders dropped 296+ -> 59, but filled_orders remained 0 in that specific run"
+      },
+      {
+        "version": "v17 same code, repeat run",
+        "result": "canceled orders 72, filled orders=2, NET PnL=+0.0468 (first positive result of the entire session), zero fees (true maker-only)"
+      }
+    ],
+    "current_status": "first positive NET PnL achieved, but on a tiny sample (2 fills) in a single run. Not yet confirmed as reproducible -- the same severity-threshold configuration produced 0 fills in one run and 2 profitable fills in the next, both within the natural session-to-session market variation already documented earlier in this project. This must be repeated at least once more before being treated as a validated result, not a lucky window.",
+    "not_yet_done": "reproducibility confirmation run pending"
   }
 }

@@ -183,6 +183,22 @@ public:
         SpinlockGuard guard(const_cast<Spinlock&>(lock_));
         return position_;
     }
+    uint64_t oldest_open_order_placed_tick() const {
+        SpinlockGuard guard(const_cast<Spinlock&>(lock_));
+        if (open_orders_.empty()) return 0;
+        uint64_t oldest = open_orders_[0].placed_tick;
+        for (auto& o : open_orders_) {
+            if (o.placed_tick < oldest) oldest = o.placed_tick;
+        }
+        return oldest;
+    }
+
+    bool get_single_open_order_side(Side& out_side) const {
+        SpinlockGuard guard(const_cast<Spinlock&>(lock_));
+        if (open_orders_.empty()) return false;
+        out_side = open_orders_[0].side;
+        return true;
+    }
     size_t n_open_orders() const {
         SpinlockGuard guard(const_cast<Spinlock&>(lock_));
         return open_orders_.size();
