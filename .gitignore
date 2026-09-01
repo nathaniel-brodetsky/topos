@@ -1,2 +1,9 @@
 __pycache__/
 __pycache__/
+native/live_engine_v*
+!native/live_engine_v*.cpp
+native/test_*
+!native/test_*.cpp
+native/centroid_lookup_avx
+native/commutator_avx
+native/hot_path_full_bridged_v2
