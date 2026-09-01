@@ -1,9 +1,16 @@
 __pycache__/
 __pycache__/
-native/live_engine_v*
-!native/live_engine_v*.cpp
-native/test_*
-!native/test_*.cpp
+# Ignore compiled binaries (no extension) but keep all .cpp/.hpp source files
+native/live_engine_v[0-9]*
+!native/*.cpp
+!native/*.hpp
+!native/**/*.cpp
+!native/**/*.hpp
 native/centroid_lookup_avx
 native/commutator_avx
 native/hot_path_full_bridged_v2
+native/test_attractor_bridge
+native/test_reconciliation_logic
+native/test_rest_snapshot_sync
+native/live_engine_calibrated
+native/layer5_execution/test_shadow_matcher
