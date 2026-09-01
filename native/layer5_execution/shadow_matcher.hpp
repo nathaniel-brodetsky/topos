@@ -199,6 +199,30 @@ public:
         out_side = open_orders_[0].side;
         return true;
     }
+
+    bool get_open_order_price_for_side(Side side, double& out_price) const {
+        SpinlockGuard guard(const_cast<Spinlock&>(lock_));
+        for (auto& o : open_orders_) {
+            if (o.side == side) {
+                out_price = o.price;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void cancel_orders_on_side(Side side, uint64_t current_tick) {
+        SpinlockGuard guard(lock_);
+        for (auto it = open_orders_.begin(); it != open_orders_.end();) {
+            if (it->side == side) {
+                it->status = OrderStatus::CANCELED;
+                canceled_orders_.push_back(*it);
+                it = open_orders_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+    }
     size_t n_open_orders() const {
         SpinlockGuard guard(const_cast<Spinlock&>(lock_));
         return open_orders_.size();

@@ -195,5 +195,27 @@
       "conclusion": "NOT reproducibly profitable. PnL oscillates around zero (both positive and negative results observed) with 0-4 fills per 150s session -- far too small a sample to draw any statistical conclusion about edge in either direction. The one clear, consistently reproduced result across all three runs is architectural: fees=0.000000 and maker_ratio=100% in every run, confirming the Zero Taker Fee Rule is correctly implemented and enforced. The trading edge question remains genuinely open -- current fill rate is too low to answer it either way.",
       "likely_reason_for_low_fill_rate": "posting via one-tick price improvement (queue_position=0) guarantees front-of-queue IF a trade occurs at that exact new price level, but does not guarantee a trade ever reaches that price at all -- price may simply move away without ever trading through our improved quote. This is a fundamentally different failure mode than the earlier queue-depth problem: now the constraint is price-level touch probability, not queue exhaustion time."
     }
+  },
+  "adaptive_pegging_chasing_mid_price": {
+    "description": "Implemented adaptive pegging per lead's spec: repost threshold = max(0.5*spread, 1 tick_size). IMPULSE now peg-chases the directional side, cancels the adverse-selection side entirely, protective side is dropped rather than deep-quoted.",
+    "runs": [
+      {
+        "filled_orders": 7,
+        "canceled_orders": 211,
+        "net_pnl": 0.171,
+        "maker_ratio_pct": 100.0
+      },
+      {
+        "filled_orders": 6,
+        "canceled_orders": 248,
+        "peg_repost_count": 86,
+        "net_pnl": 0.155,
+        "maker_ratio_pct": 100.0
+      }
+    ],
+    "target_not_met": "lead's target was 30-50 fills over 150s; achieved 6-7, roughly 6-8x below target",
+    "positive_signal": "cumulative results across the last 5 runs of the strict-maker paradigm (0.000, +0.047, -0.057, +0.171, +0.155) show 3 positive, 1 zero, 1 negative -- weakly suggestive of a real, small positive drift rather than pure noise, though the sample (23 total fills across 5 runs) remains too small for a confident statistical claim",
+    "diagnosis_of_low_fill_rate": "peg_repost_count=86 (out of 248 total cancellations in that run) confirms reposting is a major contributor to churn, but does not fully account for all cancellations -- the remaining ~160 come from VORTEX severity-triggered cancels and the per-tick 'drop protective side' logic in the IMPULSE branch (which cancels the non-chased side on every single IMPULSE tick, not just once). The chase-and-never-catch-up hypothesis (repost cycle slower than price movement) is plausible but not yet isolated from these other cancellation sources.",
+    "not_yet_done": "isolate cancellation source (peg-drift vs VORTEX vs impulse-protective-drop) more precisely; verify whether the 30-50 fill target is achievable at all with 0.001 BTC order size on this liquidity profile, independent of execution logic quality"
   }
 }
