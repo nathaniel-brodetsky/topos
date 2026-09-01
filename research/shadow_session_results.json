@@ -173,6 +173,27 @@
       }
     ],
     "current_status": "first positive NET PnL achieved, but on a tiny sample (2 fills) in a single run. Not yet confirmed as reproducible -- the same severity-threshold configuration produced 0 fills in one run and 2 profitable fills in the next, both within the natural session-to-session market variation already documented earlier in this project. This must be repeated at least once more before being treated as a validated result, not a lucky window.",
-    "not_yet_done": "reproducibility confirmation run pending"
+    "not_yet_done": "reproducibility confirmation run pending",
+    "reproducibility_check": {
+      "three_runs_same_configuration": [
+        {
+          "run": 1,
+          "filled_orders": 0,
+          "net_pnl": 0.0
+        },
+        {
+          "run": 2,
+          "filled_orders": 2,
+          "net_pnl": 0.0468
+        },
+        {
+          "run": 3,
+          "filled_orders": 4,
+          "net_pnl": -0.0567
+        }
+      ],
+      "conclusion": "NOT reproducibly profitable. PnL oscillates around zero (both positive and negative results observed) with 0-4 fills per 150s session -- far too small a sample to draw any statistical conclusion about edge in either direction. The one clear, consistently reproduced result across all three runs is architectural: fees=0.000000 and maker_ratio=100% in every run, confirming the Zero Taker Fee Rule is correctly implemented and enforced. The trading edge question remains genuinely open -- current fill rate is too low to answer it either way.",
+      "likely_reason_for_low_fill_rate": "posting via one-tick price improvement (queue_position=0) guarantees front-of-queue IF a trade occurs at that exact new price level, but does not guarantee a trade ever reaches that price at all -- price may simply move away without ever trading through our improved quote. This is a fundamentally different failure mode than the earlier queue-depth problem: now the constraint is price-level touch probability, not queue exhaustion time."
+    }
   }
 }
